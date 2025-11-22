@@ -5,22 +5,22 @@
 ## 🚀 Features
 
 ### 1. 高併發架構
-- Redis 作為快取層，降低 MySQL 負載
-- Cache versioning（避免 cache invalidation race condition）
-- 分散式鎖（Redis-based distributed lock）
-- Node.js cluster（PM2）、多 container（Docker）
-- Nginx load balancing round-robin
+- **Redis 作為快取層**，降低 MySQL 負載
+- **Cache versioning**（版本化快取，避免快取競爭條件/Cache Invalidating Race Condition）
+- **分散式鎖**（Redis-based Distributed Lock），確保數據一致性
+- **Node.js 叢集**（PM2）、多容器（Docker）實現應用程式層水平擴展
+- **Nginx 負載平衡** round-robin 策略分散流量
 
 ### 2. 完整快取策略
 - `/news` 使用版本化快取（key versioning）
 - Redis `INCR` 方式管理資料版本
-- Fast-fail lock（PX 避免死鎖）
-- Cache stampede 保護機制（避免大量 Cache Miss 打爆 DB）
+- **Fast-fail lock**（PX 避免死鎖）
+- **Cache stampede** 保護機制（避免大量 Cache Miss 打爆 DB）
 
 ### 3. 可水平擴展
-- 全部服務 Docker 化
-- Nginx upstream 指向多個 Node container
-- Redis、MySQL 皆使用 Docker Compose 管理
+- 全部服務 Docker 化，實現環境隔離
+- Nginx upstream 指向多個 Node container（服務名稱解析）
+- Redis、MySQL 皆使用 Docker Compose 管理（單一檔案啟動整個架構）
 
 ### 4. 壓力測試
 使用 wrk 測試達到 **1150 req/sec**（100 connections / 4 threads）
@@ -30,26 +30,38 @@
 | Component | Technology |
 |-----------|-----------|
 | Backend | Node.js, Express |
-| Database | MySQL (Connection Pool) |
+| Database | MySQL (Connection Pool, Auto Data Init) |
 | Cache | Redis (versioned cache, distributed lock) |
 | Web Server | Nginx |
 | Process Manager | PM2 |
-| Containerization | Docker, Docker Compose |
-| OS Env | WSL (Windows) |
+| Containerization | Docker, Docker Compose (v2) |
 | Load Test | wrk |
 
 ## 📁 Project Structure
 
 ```
 news-system-api/
+├── config/
+│   ├── db.js                 # MySQL 連線池配置
+│   └── redis.js              # Redis 連線配置
+├── controllers/
+│   └── newsController.js     # 新聞控制器邏輯
+├── db_init/
+│   └── init.sql              # 🐳 MySQL 初始化資料腳本
+├── models/
+│   └── newsModel.js          # 新聞資料模型
+├── nginx/
+│   └── nginx.conf            # Nginx load balancer 配置
 ├── routes/
-│   └── news.js         # 主新聞 API（含快取、鎖、版本）
-├── db.js               # MySQL 連線池
-├── redis.js            # Redis 連線
-├── server.js           # Express 啟動點
-├── Dockerfile          # Node.js Docker 建置
-├── nginx.conf          # Nginx load balancer
-└── docker-compose.yml  # 全專案一鍵啟動
+│   └── newsRoutes.js         # 新聞路由定義
+├── services/
+│   └── newsService.js        # 新聞業務邏輯層
+├── utils/
+│   └── redisLock.js          # Redis 分散式鎖工具
+├── .gitignore                # Git 忽略檔案
+├── docker-compose.yml        # Docker Compose 配置
+├── Dockerfile                # Node.js Docker 映像檔
+└── package-lock.json         # NPM 依賴鎖定檔
 ```
 
 ## 🔥 API Endpoints
@@ -105,7 +117,6 @@ await redis.set("lock:news:all", token, { NX: true, PX: 10000 });
 ```
 
 釋放鎖使用 Lua script：
-
 ```lua
 if redis.call("get", KEYS[1]) == ARGV[1] then
   return redis.call("del", KEYS[1])
@@ -114,28 +125,55 @@ else
 end
 ```
 
-## 🐳 Docker Deployment
+## 🐳 Docker Deployment (推薦啟動方式)
 
-### 1. Build Image
+本專案使用 Docker Compose 進行一鍵部署，以確保環境高度一致性和可攜性。
+
+### 1. 首次啟動 (建構映像檔 & 啟動所有服務)
+
+此指令會在背景啟動所有服務，並強制建構 Node.js 映像檔，同時初始化 MySQL 資料庫。
+
 ```bash
-docker build -t news-api .
+# 啟動所有服務，並在背景運行
+docker compose up -d --build
 ```
 
-### 2. Start Services
+### 2. 日常啟動/重啟 (使用現有映像檔)
+
+如果您沒有修改 Node.js 程式碼，下次可以直接使用此指令快速啟動。
+
 ```bash
 docker compose up -d
 ```
 
-### 3. Services Architecture
+### 3. 停止服務 (保留容器與數據)
 
-| Service | Port | Role |
-|---------|------|------|
-| Node API | 3000 | Backend |
-| Redis | 6379 | Cache |
-| MySQL | 3306 | Database |
-| Nginx | 8080 / 9000 | Load Balancer |
+若需暫時停止容器運行，但保留所有容器實例和配置。
 
-## 🌐 Nginx Load Balancer Example
+```bash
+docker compose stop
+```
+
+### 4. 徹底關閉 (移除容器與網路)
+
+關閉並移除容器和網路，但保留命名資料卷 (mysql_data, redis_data)。
+
+```bash
+docker compose down
+```
+
+### 5. 服務架構概覽
+
+| Service Name | Internal Port | External Port | Role |
+|--------------|---------------|---------------|------|
+| node-news-api-1/2/3 | 3000 | (N/A) | Backend API |
+| redis-news | 6379 | 6380 | Cache |
+| mysql-news-api | 3306 | (N/A) | Database (Auto-init) |
+| nginx-lb | 8080 | 9000 | Load Balancer |
+
+## 🌐 Nginx Load Balancer 配置
+
+Nginx 使用容器名稱進行服務解析，實現負載均衡。
 
 ```nginx
 events {}
@@ -148,15 +186,13 @@ http {
     }
 
     server {
-        listen 9000;
+        listen 8080;
 
         location / {
             proxy_pass http://nodejs_cluster;
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection 'upgrade';
             proxy_set_header Host $host;
-            proxy_cache_bypass $http_upgrade;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         }
     }
 }
@@ -164,12 +200,16 @@ http {
 
 ## 📈 Performance Testing (wrk)
 
-**測試指令：**
+### 測試指令
+
+由於服務運行在 Docker 內部，請使用 `host.docker.internal` 或您的主機 IP 進行測試。
+
 ```bash
+# 確保 wrk 容器可以訪問主機的 9000 Port
 docker run --rm williamyeh/wrk -t4 -c100 -d10s http://host.docker.internal:9000/news
 ```
 
-**測試結果：**
+### 測試結果
 
 | Metric | Value |
 |--------|-------|
@@ -177,48 +217,55 @@ docker run --rm williamyeh/wrk -t4 -c100 -d10s http://host.docker.internal:9000/
 | Latency Avg | ~90ms |
 | Errors | 0 |
 
-## 📦 Installation (Local)
+## 📦 Local Development
 
-### 1. Install Dependencies
-```bash
-npm install
-```
+如果您想在本地環境（非 Docker）運行 Node.js 服務，請確保：
 
-### 2. Start Server
-```bash
-npm start
-```
+### 1. 配置環境變數
 
-## 🧪 Testing
-
-```bash
-curl http://localhost:3000/news
-```
-
-## 🛠️ Configuration
-
-請確保以下環境變數已設定：
+將以下變數放入專案根目錄的 `.env` 檔案中：
 
 ```env
+# 🚨 注意：如果是在 Docker 外部運行，DB/Redis HOST 必須是 localhost 或 IP
 MYSQL_HOST=localhost
 MYSQL_USER=root
 MYSQL_PASSWORD=your_password
-MYSQL_DATABASE=news_db
+MYSQL_DATABASE=news_system
 REDIS_HOST=localhost
 REDIS_PORT=6379
 PORT=3000
 ```
 
+### 2. 啟動 Node.js 服務
+
+```bash
+npm install
+npm start
+```
+
+## 🧪 Testing
+
+### 測試 Nginx 負載平衡
+
+```bash
+curl http://localhost:9000/news
+```
+
+### 測試後端服務 (Local Only)
+
+```bash
+curl http://localhost:3000/news
+```
+
 ## 📝 Notes
 
-- 本專案使用 PM2 管理 Node.js 進程
-- Redis 和 MySQL 連線池已優化
-- 建議在生產環境使用 Docker Compose 部署
-- Nginx 配置可根據實際需求調整 upstream 數量
+- **環境變數**： Docker 容器內部的 Node.js 服務直接使用 `docker-compose.yml` 中定義的環境變數，並使用服務名稱 (`mysql-news-api` 和 `redis-news`) 作為 HOST。
+- 本專案使用 **PM2** 管理 Node.js 進程。
+- MySQL 初始化資料腳本位於 `./db_init/init.sql`。
 
 ## 🧑‍💻 Author
 
-**Yunxiang Wang**
+Yunxiang Wang
 
 ## 📄 License
 
@@ -226,4 +273,4 @@ MIT
 
 ---
 
-⭐ 如果這個專案對你有幫助，歡迎給個 Star！
+⭐ **如果這個專案對你有幫助，歡迎給個 Star！**
