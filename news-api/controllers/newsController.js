@@ -1,6 +1,7 @@
 import { NewsService } from "../services/newsService.js";
 
 export const NewsController = {
+    // 取得所有新聞
     async getAll(req, res) {
         try {
             const news = await NewsService.getAllNews();
@@ -11,6 +12,7 @@ export const NewsController = {
         }
     },
 
+    // 取得單筆
     async getOne(req, res) {
         try {
             const news = await NewsService.getNewsById(req.params.id);
@@ -21,6 +23,7 @@ export const NewsController = {
         }
     },
 
+    // 建立新聞
     async create(req, res) {
         try {
             const id = await NewsService.createNews(req.body);
@@ -31,6 +34,7 @@ export const NewsController = {
         }
     },
 
+    // 更新新聞
     async update(req, res) {
         try {
             await NewsService.updateNews(req.params.id, req.body);
@@ -41,6 +45,7 @@ export const NewsController = {
         }
     },
 
+    // 刪除新聞
     async remove(req, res) {
         try {
             await NewsService.deleteNews(req.params.id);

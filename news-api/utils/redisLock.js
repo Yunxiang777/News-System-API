@@ -1,6 +1,7 @@
 import redis from "../config/redis.js";
 import { randomUUID } from "crypto";
 
+// 避免死鎖，檢查鎖，避免誤刪
 const RELEASE_LOCK_SCRIPT = `
 if redis.call("get", KEYS[1]) == ARGV[1] then
   return redis.call("del", KEYS[1])
@@ -19,6 +20,7 @@ export class RedisLock {
     // 嘗試獲取鎖
     async tryAcquire() {
         this.token = randomUUID();
+        // 檢查鎖，uuid避免誤刪鎖
         const ok = await redis.set(this.lockKey, this.token, { NX: true, PX: this.ttl });
         return !!ok; // return boolean
     }
