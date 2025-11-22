@@ -1,0 +1,75 @@
+# =====================================
+# Node.js & JavaScript / TypeScript
+# =====================================
+
+# Node modules
+node_modules/
+
+# Environment variables
+.env
+.env.*.local
+*.env
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Runtime files
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Editor directories
+.vscode/
+.idea/
+
+# Build outputs
+dist/
+build/
+out/
+coverage/
+
+# Cache
+.cache/
+.cache-loader/
+npm-cache/
+yarn-cache/
+pnpm-store/
+
+# TypeScript
+*.tsbuildinfo
+
+# PM2 logs & dumps
+.pm2/
+
+# Optional lock file ignores (依你的團隊習慣可以保留)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# Testing
+jest-html-reporters-*.html
+test-results/
+
+# Next.js / Nuxt (如有)
+.next/
+.nuxt/
+out/
+
+# Prisma (如使用)
+prisma/*.db
+prisma/migrations/*-shadow-database/
+
+# Firebase / Google Cloud (如使用)
+.firebaserc
+.firebase/
